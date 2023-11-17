@@ -13,13 +13,14 @@ mod request;
 mod response;
 
 use config::Config;
-use log::{debug, error, info, warn};
 use prelude::*;
+use tracing::{debug, error, info, warn};
 
 use crate::error::{ConfigurationError, HandleConnectionError, ParseRequestError};
 
 const CONFIG_PATH: &str = "brzthook.toml";
 
+#[derive(Debug)]
 pub struct HookListener {
     listener: TcpListener,
     config: Config,
@@ -230,8 +231,8 @@ fn handle_connection(mut stream: TcpStream) -> Result<Option<Notification>, Erro
             info!("Sending: {response}");
             stream.write_all(response.as_bytes())?;
 
-            //write_to_file(&message)?;
-            //info!("New message saved in 'out.txt'");
+            write_to_file(&message)?;
+            info!("New message saved in 'out.txt'");
 
             let crlf = message
                 .find("\r\n\r\n")
