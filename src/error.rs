@@ -1,13 +1,19 @@
+use crate::prelude::Notification;
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Invalid subscription mode \"{0}\"; valid modes are \"subscribe\" or \"unsubscribe\"")]
     SubscriptionModeError(String),
     #[error("Configuration error")]
-    ConfigurationError(#[from] ConfigurationError),
+    Configuration(#[from] ConfigurationError),
     #[error("TcpStream error")]
     TcpError(#[from] std::io::Error),
     #[error("Missing parameter")]
     NotificationError(String),
+    #[error("Request error")]
+    RequestLine(#[from] ParseRequestError),
+    #[error("Error while handling connection")]
+    HandleConnection(#[from] HandleConnectionError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -28,4 +34,18 @@ pub enum ParseRequestError {
     ParameterError(String),
     #[error("Requested resource does not exists")]
     UriError,
+    #[error("No request line")]
+    RequestLineError,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum HandleConnectionError {
+    #[error("Message is empty")]
+    Empty,
+    #[error("Message has non-utf8 characters")]
+    FormatUtf8Error(#[from] std::string::FromUtf8Error),
+    #[error("Message has no body")]
+    NoBodyError,
+    #[error("Send error")]
+    SendError(#[from] Box<std::sync::mpsc::SendError<Notification>>),
 }

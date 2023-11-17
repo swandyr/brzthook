@@ -16,18 +16,14 @@ mod response;
 
 use config::Config;
 use log::{debug, error, info, warn};
-use pool::ThreadPool;
 use prelude::*;
 
-use crate::error::ConfigurationError;
-
-type BoxedError = Box<dyn std::error::Error>;
+use crate::error::{ConfigurationError, HandleConnectionError, ParseRequestError};
 
 const CONFIG_PATH: &str = "brzthook.toml";
 
 pub struct HookListener {
     listener: TcpListener,
-    pool: ThreadPool,
     config: Config,
     sender: mpsc::Sender<Notification>,
 }
@@ -48,7 +44,7 @@ impl HookListener {
     /// Configuration file does not exist or is malformed.
     ///
     /// TcpListener can not bind to the address.
-    pub fn new(num_threads: usize) -> Result<(Self, mpsc::Receiver<Notification>), Error> {
+    pub fn new() -> Result<(Self, mpsc::Receiver<Notification>), Error> {
         let config = Config::from_file(CONFIG_PATH)?;
         info!("Config loaded");
         let addr = config.server_address();
@@ -57,7 +53,6 @@ impl HookListener {
 
         let listener = Self {
             listener: TcpListener::bind(&addr)?,
-            pool: ThreadPool::new(num_threads),
             config,
             sender,
         };
@@ -89,18 +84,14 @@ impl HookListener {
     /// }
     ///
     /// ```
-    pub fn listen(&self) -> Result<(), BoxedError> {
-        info!("Start listener with {} threads", self.pool.num_threads());
+    pub fn listen(&self) -> Result<(), Error> {
+        info!("Start listening.");
 
         for stream in self.listener.incoming() {
             let stream = stream?;
             let sender = self.sender.clone();
 
-            self.pool.execute(|| {
-                if let Err(e) = handle_connection(stream, sender) {
-                    error!("Connection handle: {e}");
-                };
-            });
+            handle_connection(stream, sender)?;
         }
 
         Ok(())
@@ -183,7 +174,7 @@ const BUF_SIZE: usize = 1024;
 fn handle_connection(
     mut stream: TcpStream,
     sender: mpsc::Sender<Notification>,
-) -> Result<(), BoxedError> {
+) -> Result<(), Error> {
     let mut buf_reader = BufReader::new(&mut stream);
 
     let mut n_bytes = 0;
@@ -200,18 +191,19 @@ fn handle_connection(
             }
             Err(e) => {
                 error!("Error reading buffer: {e}");
+                return Err(Error::TcpError(e));
             }
         }
     }
     info!("Received {n_bytes} bytes");
 
     received.retain(|&b| b != 0);
-    let message = String::from_utf8(received)?;
+    let message = String::from_utf8(received).map_err(HandleConnectionError::FormatUtf8Error)?;
     let message_lines: Vec<&str> = message.trim().lines().collect();
 
     debug!("Message:\n{message}");
 
-    let request_line = message_lines.first().ok_or("Message is empty")?;
+    let request_line = message_lines.first().ok_or(HandleConnectionError::Empty)?;
 
     match *request_line {
         // The hub send 202 Accepted if the subscription request is accepted
@@ -224,12 +216,12 @@ fn handle_connection(
         request if request.starts_with("GET") => {
             info!("Received GET request");
             let request_line = request::parse_request_line(request)?;
-            let params = request_line
-                .params
-                .ok_or("Verification of intent: no parameters found")?;
+            let params = request_line.params.ok_or_else(|| {
+                ParseRequestError::ParameterError("No parameters in request".to_string())
+            })?;
             let challenge = params
                 .get("hub.challenge")
-                .ok_or("Verification of intent: no hub.challenge found")?;
+                .ok_or_else(|| ParseRequestError::NotFound("hub.challenge".to_string()))?;
 
             let response = format!("HTTP/1.1 200 OK\r\n\r\n{}", challenge);
             info!("Sending: {response:?}");
@@ -249,14 +241,16 @@ fn handle_connection(
 
             let crlf = message
                 .find("\r\n\r\n")
-                .ok_or("No empty line found after headers")?;
+                .ok_or(HandleConnectionError::NoBodyError)?;
             let xml = &message.as_str()[crlf..];
 
             let t = std::time::Instant::now();
             let result = Notification::try_parse(xml)?;
             debug!("mine: {} µs", t.elapsed().as_micros());
 
-            sender.send(result)?;
+            sender
+                .send(result)
+                .map_err(|e| HandleConnectionError::SendError(Box::new(e)))?;
         }
 
         // Unhandled
