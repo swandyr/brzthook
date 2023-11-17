@@ -23,7 +23,7 @@ use crate::error::ConfigurationError;
 
 type BoxedError = Box<dyn std::error::Error>;
 
-const CONFIG_PATH: &str = "webhook.toml";
+const CONFIG_PATH: &str = "brzthook.toml";
 
 pub struct HookListener {
     listener: TcpListener,
@@ -48,16 +48,16 @@ impl HookListener {
     /// Configuration file does not exist or is malformed.
     ///
     /// TcpListener can not bind to the address.
-    pub fn new() -> Result<(Self, mpsc::Receiver<Notification>), Error> {
+    pub fn new(num_threads: usize) -> Result<(Self, mpsc::Receiver<Notification>), Error> {
         let config = Config::from_file(CONFIG_PATH)?;
         info!("Config loaded");
-        let addr = format!("{}:{}", config.server.host, config.server.port);
+        let addr = config.server_address();
 
         let (sender, receiver) = mpsc::channel();
 
         let listener = Self {
             listener: TcpListener::bind(&addr)?,
-            pool: ThreadPool::new(4),
+            pool: ThreadPool::new(num_threads),
             config,
             sender,
         };

@@ -18,6 +18,10 @@ impl Config {
         Ok(config)
     }
 
+    pub(super) fn server_address(&self) -> String {
+        format!("{}:{}", self.server.host, self.server.port)
+    }
+
     pub(super) fn callback_address(&self) -> String {
         format!("{}:{}", self.server.callback, self.server.port)
     }
