@@ -1,4 +1,4 @@
-use std::{fmt::Display, fs, path::Path};
+use std::{fmt::Display, fs};
 
 use serde::Deserialize;
 
@@ -6,7 +6,6 @@ use serde::Deserialize;
 pub(super) struct Config {
     pub(super) server: CfgServer,
     pub(super) youtube: Option<CfgSubs>,
-    pub(super) twitch: Option<CfgSubs>,
 }
 
 impl Config {

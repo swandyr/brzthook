@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fmt::{self, format},
+    fmt::{self},
     path::Path,
 };
 

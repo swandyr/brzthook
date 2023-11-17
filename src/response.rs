@@ -16,6 +16,7 @@ impl<'a> fmt::Display for Response<'a> {
     }
 }
 
+#[allow(unused)]
 pub(super) fn parse_status_line(status_line: &str) -> Result<Response, Box<dyn std::error::Error>> {
     let mut parts = status_line.split_whitespace();
 

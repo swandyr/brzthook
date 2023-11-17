@@ -1,5 +1,5 @@
 [package]
-name = "callback_server"
+name = "brzthook"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,5 +7,6 @@ edition = "2021"
 
 [dependencies]
 log = "0.4.20"
+quick-xml = "0.31.0"
 serde = { version = "1.0.192", features = ["derive"] }
 toml = "0.8.8"

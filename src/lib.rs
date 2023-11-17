@@ -1,15 +1,14 @@
-#![allow(unused)]
-
 use std::{
-    fmt::Display,
     fs::File,
     io::{prelude::*, BufReader},
-    net::{TcpListener, TcpStream, ToSocketAddrs},
-    time::Duration,
+    net::{TcpListener, TcpStream},
+    sync::mpsc,
 };
 
 mod config;
 mod error;
+mod notification;
+mod parse;
 mod pool;
 mod prelude;
 mod request;
@@ -20,8 +19,6 @@ use log::{debug, error, info, warn};
 use pool::ThreadPool;
 use prelude::*;
 
-use request::parse_request_line;
-
 type BoxedError = Box<dyn std::error::Error>;
 
 const CONFIG_PATH: &str = "webhook.toml";
@@ -30,6 +27,7 @@ pub struct HookListener {
     listener: TcpListener,
     pool: ThreadPool,
     config: Config,
+    sender: mpsc::Sender<Notification>,
 }
 
 //TODO: Handle resubscription before the expiration delay (5 days for youtube)
@@ -37,36 +35,67 @@ pub struct HookListener {
 //TODO: Write more custom errors
 
 impl HookListener {
-    /// Creates a new listener binded to the server's "{host}:{port}" address  in the webhook.toml
+    /// Create a new listener binded to the server's "{host}:{port}" address  in the webhook.toml
     /// config file, then instanciate a threadpool of four threads.
+    ///
+    /// This function returns the listener and the channel's receiver where notification will be
+    /// sent.
     ///
     /// # Panics:
     ///
     /// Configuration file does not exist or is malformed.
     ///
     /// TcpListener can not bind to the address.
-    pub fn new() -> Result<Self, BoxedError> {
+    pub fn new() -> Result<(Self, mpsc::Receiver<Notification>), BoxedError> {
         let config = Config::from_file(CONFIG_PATH)?;
         info!("Config loaded");
         let addr = format!("{}:{}", config.server.host, config.server.port);
+
+        let (sender, receiver) = mpsc::channel();
 
         let listener = Self {
             listener: TcpListener::bind(&addr)?,
             pool: ThreadPool::new(4),
             config,
+            sender,
         };
         info!("TCPListener binded to {}", &addr);
 
-        Ok(listener)
+        Ok((listener, receiver))
     }
 
-    /// Starts lestening for incoming streams.
+    /// Start listening for incoming streams.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// // Create the listener
+    /// let (listener, receiver) = HookListener::new()?;
+    ///
+    /// // Start the listener in the background
+    /// std::thead::spawn(|| {
+    ///     if let Err(e) = listener.listen() {
+    ///     println!("error: {e}");
+    ///     }
+    /// });
+    ///
+    /// // Wait for notification
+    /// loop {
+    ///     if let Ok(message) = receiver.try_recv() {
+    ///         println!("New video: {message:?}");
+    ///     }
+    /// }
+    ///
+    /// ```
     pub fn listen(&self) -> Result<(), BoxedError> {
         info!("Start listener with {} threads", self.pool.num_threads());
+
         for stream in self.listener.incoming() {
             let stream = stream?;
+            let sender = self.sender.clone();
+
             self.pool.execute(|| {
-                if let Err(e) = handle_connection(stream) {
+                if let Err(e) = handle_connection(stream, sender) {
                     error!("Connection handle: {e}");
                 };
             });
@@ -87,14 +116,14 @@ impl HookListener {
         Ok(())
     }
 
-    /// Sends a subscription/unsubscription request to the hub.
+    /// Send a subscription/unsubscription request to the hub.
     ///
     /// It sends a POST request to the hub with the formatted topic url
     /// , the callback url and the subscription mode.
     ///
     /// # Panics:
     ///
-    /// Subscription mode is not "sbuscribe" or "unsubscribe".
+    /// Subscription mode is not "subscribe" or "unsubscribe".
     ///
     /// Publisher configuration is not found.
     ///
@@ -154,7 +183,10 @@ hub.topic={}"#,
 
 const BUF_SIZE: usize = 1024;
 
-fn handle_connection(mut stream: TcpStream) -> Result<(), BoxedError> {
+fn handle_connection(
+    mut stream: TcpStream,
+    sender: mpsc::Sender<Notification>,
+) -> Result<(), BoxedError> {
     let mut buf_reader = BufReader::new(&mut stream);
 
     let mut n_bytes = 0;
@@ -210,11 +242,28 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), BoxedError> {
         // Request when a new resource is published
         "POST / HTTP/1.1" => {
             info!("Received POST request");
+
             let response = "HTTP/1.1 200 OK\r\n\r\n";
             info!("Sending: {response}");
             stream.write_all(response.as_bytes())?;
-            write_to_file(message)?;
-            info!("New message saved in 'out.txt'");
+
+            //write_to_file(&message)?;
+            //info!("New message saved in 'out.txt'");
+
+            let crlf = message
+                .find("\r\n\r\n")
+                .ok_or("No empty line found after headers")?;
+            let xml = &message.as_str()[crlf..];
+
+            let t = std::time::Instant::now();
+            let _result = Notification::try_parse(xml)?;
+            debug!("quick_xml: {} µs", t.elapsed().as_micros());
+
+            let t = std::time::Instant::now();
+            let result = Notification::try_my_parse(xml)?;
+            debug!("mine: {} µs", t.elapsed().as_micros());
+
+            sender.send(result)?;
         }
 
         // Unhandled
@@ -231,10 +280,11 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), BoxedError> {
     Ok(())
 }
 
-fn write_to_file(message: String) -> Result<(), BoxedError> {
+#[allow(unused)]
+fn write_to_file(message: &str) -> Result<(), BoxedError> {
     let mut f = File::options().create(true).append(true).open("out.txt")?;
-    writeln!(&mut f, "========== New Message ==========");
-    writeln!(&mut f, "{message}");
-    writeln!(&mut f);
+    writeln!(&mut f, "========== New Message ==========")?;
+    writeln!(&mut f, "{message}")?;
+    writeln!(&mut f)?;
     Ok(())
 }
