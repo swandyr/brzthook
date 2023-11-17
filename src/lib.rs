@@ -9,7 +9,6 @@ mod config;
 mod error;
 mod notification;
 mod parse;
-mod pool;
 mod prelude;
 mod request;
 mod response;
