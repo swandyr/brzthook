@@ -2,14 +2,13 @@ use std::{
     fs::File,
     io::{prelude::*, BufReader},
     net::{TcpListener, TcpStream},
-    sync::mpsc,
 };
 
 mod config;
 mod error;
 mod notification;
 mod parse;
-mod prelude;
+pub mod prelude;
 mod request;
 mod response;
 
@@ -24,7 +23,6 @@ const CONFIG_PATH: &str = "brzthook.toml";
 pub struct HookListener {
     listener: TcpListener,
     config: Config,
-    sender: mpsc::Sender<Notification>,
 }
 
 //TODO: Handle resubscription before the expiration delay (5 days for youtube) (or maybe let caller
@@ -43,21 +41,18 @@ impl HookListener {
     /// Configuration file does not exist or is malformed.
     ///
     /// TcpListener can not bind to the address.
-    pub fn new() -> Result<(Self, mpsc::Receiver<Notification>), Error> {
+    pub fn new() -> Result<Self, Error> {
         let config = Config::from_file(CONFIG_PATH)?;
         info!("Config loaded");
         let addr = config.server_address();
 
-        let (sender, receiver) = mpsc::channel();
-
         let listener = Self {
             listener: TcpListener::bind(&addr)?,
             config,
-            sender,
         };
         info!("TCPListener binded to {}", &addr);
 
-        Ok((listener, receiver))
+        Ok(listener)
     }
 
     /// Start listening for incoming streams.
@@ -83,17 +78,16 @@ impl HookListener {
     /// }
     ///
     /// ```
-    pub fn listen(&self) -> Result<(), Error> {
+    pub fn listen(&self) -> Result<Option<Notification>, Error> {
         info!("Start listening.");
 
+        let mut nt = None;
         for stream in self.listener.incoming() {
             let stream = stream?;
-            let sender = self.sender.clone();
-
-            handle_connection(stream, sender)?;
+            nt = handle_connection(stream)?;
         }
 
-        Ok(())
+        Ok(nt)
     }
 
     /// Reload the webhook.toml configuration file.
@@ -170,10 +164,7 @@ hub.topic={}"#,
 
 const BUF_SIZE: usize = 1024;
 
-fn handle_connection(
-    mut stream: TcpStream,
-    sender: mpsc::Sender<Notification>,
-) -> Result<(), Error> {
+fn handle_connection(mut stream: TcpStream) -> Result<Option<Notification>, Error> {
     let mut buf_reader = BufReader::new(&mut stream);
 
     let mut n_bytes = 0;
@@ -204,10 +195,12 @@ fn handle_connection(
 
     let request_line = message_lines.first().ok_or(HandleConnectionError::Empty)?;
 
-    match *request_line {
+    let notification = match *request_line {
         // The hub send 202 Accepted if the subscription request is accepted
         "HTTP/1.1 202 ACCEPTED" => {
             info!("Subscription accepted");
+
+            None
         }
 
         // The hub senf a GET request for the verification of intent
@@ -225,6 +218,8 @@ fn handle_connection(
             let response = format!("HTTP/1.1 200 OK\r\n\r\n{}", challenge);
             info!("Sending: {response:?}");
             stream.write_all(response.as_bytes())?;
+
+            None
         }
 
         // Request when a new resource is published
@@ -244,12 +239,10 @@ fn handle_connection(
             let xml = &message.as_str()[crlf..];
 
             let t = std::time::Instant::now();
-            let result = Notification::try_parse(xml)?;
+            let notification = Notification::try_parse(xml)?;
             debug!("mine: {} µs", t.elapsed().as_micros());
 
-            sender
-                .send(result)
-                .map_err(|e| HandleConnectionError::SendError(Box::new(e)))?;
+            Some(notification)
         }
 
         // Unhandled
@@ -259,11 +252,13 @@ fn handle_connection(
             for line in &message_lines {
                 warn!("{line}");
             }
+
+            None
         }
-    }
+    };
 
     stream.flush()?;
-    Ok(())
+    Ok(notification)
 }
 
 #[allow(unused)]
