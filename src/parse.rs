@@ -1,27 +1,6 @@
-use quick_xml::{events::Event, Reader};
-use std::{borrow::Cow, collections::HashMap};
+use std::collections::HashMap;
 
-pub(super) fn parse(xml: &str) -> Result<Vec<Cow<'_, str>>, Box<dyn std::error::Error>> {
-    // Should handle utf16? (quick_xml --features encoding)
-
-    let mut reader = Reader::from_str(xml);
-    reader.trim_text(true);
-
-    let mut parsed = vec![];
-    loop {
-        match reader.read_event()? {
-            Event::Eof => break,
-            Event::Text(txt) => parsed.push(txt.unescape()?),
-            _ => {}
-        }
-    }
-
-    //dbg!(&parsed);
-
-    Ok(parsed)
-}
-
-pub(super) fn my_parse(xml: &str) -> HashMap<&str, &str> {
+pub(super) fn parse_xml(xml: &str) -> HashMap<&str, &str> {
     let mut v = HashMap::new();
     let tags = &["<yt:videoId>", "<yt:channelId>", "<title>", "<name>"];
     let mut lines = xml.lines().map(|l| l.trim());

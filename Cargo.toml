@@ -7,6 +7,6 @@ edition = "2021"
 
 [dependencies]
 log = "0.4.20"
-quick-xml = "0.31.0"
 serde = { version = "1.0.192", features = ["derive"] }
+thiserror = "1.0.50"
 toml = "0.8.8"

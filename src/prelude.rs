@@ -1,2 +1,2 @@
-pub use crate::error::{CallbackError, MyError};
+pub use crate::error::Error;
 pub use crate::notification::Notification;

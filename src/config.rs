@@ -2,6 +2,8 @@ use std::{fmt::Display, fs};
 
 use serde::Deserialize;
 
+use crate::error::ConfigurationError;
+
 #[derive(Debug, Deserialize)]
 pub(super) struct Config {
     pub(super) server: CfgServer,
@@ -9,9 +11,9 @@ pub(super) struct Config {
 }
 
 impl Config {
-    pub(super) fn from_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let file = fs::read_to_string(path)?;
-        let config: Config = toml::from_str(&file)?;
+    pub(super) fn from_file(path: &str) -> Result<Self, ConfigurationError> {
+        let file = fs::read_to_string(path).map_err(ConfigurationError::MissingFile)?;
+        let config: Config = toml::from_str(&file).map_err(ConfigurationError::ParseError)?;
 
         Ok(config)
     }

@@ -4,6 +4,8 @@ use std::{
     path::Path,
 };
 
+use crate::error::ParseRequestError;
+
 pub(super) struct Request<'a> {
     pub(super) method: &'a str,
     pub(super) path: &'a Path,
@@ -34,21 +36,31 @@ impl<'a> fmt::Display for Request<'a> {
     }
 }
 
-pub(super) fn parse_request_line(request: &str) -> Result<Request, Box<dyn std::error::Error>> {
+pub(super) fn parse_request_line(request: &str) -> Result<Request, ParseRequestError> {
     let mut parts = request.split_whitespace();
 
-    let method = parts.next().ok_or("Method not specified")?;
+    let method = parts
+        .next()
+        .ok_or_else(|| ParseRequestError::NotFound("Method".to_string()))?;
 
-    let uri = parts.next().ok_or("URI not specified")?;
+    let uri = parts
+        .next()
+        .ok_or_else(|| ParseRequestError::NotFound("URI".to_string()))?;
 
     let (path, params) = {
         if uri.contains('?') {
-            let (path, params_string) = uri.split_once('?').ok_or("Cannot parse parameters")?;
+            let (path, params_string) = uri.split_once('?').ok_or_else(|| {
+                ParseRequestError::ParameterError("No parameters in request".to_string())
+            })?;
 
             let params_vec = params_string.split('&');
             let mut params = HashMap::new();
             for p in params_vec {
-                let (key, value) = p.split_once('=').ok_or("Cannot parse parameter")?;
+                let (key, value) = p.split_once('=').ok_or_else(|| {
+                    ParseRequestError::ParameterError(
+                        "Parameter found is not key=value".to_string(),
+                    )
+                })?;
                 params.insert(key, value);
             }
 
@@ -63,10 +75,12 @@ pub(super) fn parse_request_line(request: &str) -> Result<Request, Box<dyn std::
     const ROOT: &str = ".";
 
     if !Path::new(&format!("{ROOT}{norm_uri}")).exists() {
-        Err("Requested resources does not exists")?;
+        Err(ParseRequestError::UriError)?;
     }
 
-    let http_version = parts.next().ok_or("HTTP version not specified")?;
+    let http_version = parts
+        .next()
+        .ok_or_else(|| ParseRequestError::NotFound("HTTP version".to_string()))?;
 
     Ok(Request {
         method,

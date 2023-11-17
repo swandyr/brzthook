@@ -19,6 +19,8 @@ use log::{debug, error, info, warn};
 use pool::ThreadPool;
 use prelude::*;
 
+use crate::error::ConfigurationError;
+
 type BoxedError = Box<dyn std::error::Error>;
 
 const CONFIG_PATH: &str = "webhook.toml";
@@ -30,9 +32,9 @@ pub struct HookListener {
     sender: mpsc::Sender<Notification>,
 }
 
-//TODO: Handle resubscription before the expiration delay (5 days for youtube)
-//TODO: Write documentation
-//TODO: Write more custom errors
+//TODO: Handle resubscription before the expiration delay (5 days for youtube) (or maybe let caller
+//handle it)
+//TODO: Write function to automatically get hu address
 
 impl HookListener {
     /// Create a new listener binded to the server's "{host}:{port}" address  in the webhook.toml
@@ -46,7 +48,7 @@ impl HookListener {
     /// Configuration file does not exist or is malformed.
     ///
     /// TcpListener can not bind to the address.
-    pub fn new() -> Result<(Self, mpsc::Receiver<Notification>), BoxedError> {
+    pub fn new() -> Result<(Self, mpsc::Receiver<Notification>), Error> {
         let config = Config::from_file(CONFIG_PATH)?;
         info!("Config loaded");
         let addr = format!("{}:{}", config.server.host, config.server.port);
@@ -109,7 +111,7 @@ impl HookListener {
     /// # Panics:
     ///
     /// Configuration file does not exist or is malformed.
-    pub fn reload_config(&mut self) -> Result<(), BoxedError> {
+    pub fn reload_config(&mut self) -> Result<(), Error> {
         let config = Config::from_file(CONFIG_PATH)?;
         self.config = config;
         info!("Config reloaded");
@@ -128,23 +130,21 @@ impl HookListener {
     /// Publisher configuration is not found.
     ///
     /// Request can not be streamed to the hub address.
-    pub fn subscribe(&self, id: impl AsRef<str>, mode: impl AsRef<str>) -> Result<(), BoxedError> {
+    pub fn subscribe(&self, id: impl AsRef<str>, mode: impl AsRef<str>) -> Result<(), Error> {
         let id = id.as_ref();
         let mode = mode.as_ref();
 
         info!("Initiating {mode} request with id: {id}");
 
         if !(mode == "subscribe" || mode == "unsubscribe") {
-            return Err(Box::new(MyError {
-                source: CallbackError::SubscriptionMode,
-            }));
+            return Err(Error::SubscriptionModeError(mode.into()));
         }
 
         let subscription = self
             .config
             .youtube
             .as_ref()
-            .ok_or("Youtube configuration not found")?;
+            .ok_or_else(|| ConfigurationError::PublisherNotFoundError("Youtube".to_string()))?;
         let topic_url = subscription.topic_address(id);
         let callback_url = self.config.callback_address();
         let hub = subscription.hub_address();
@@ -173,9 +173,6 @@ hub.topic={}"#,
         let mut stream = TcpStream::connect(hub_addr)?;
         stream.write_all(post_request.as_bytes())?;
         stream.flush()?;
-
-        // Send the stream to handle_connection() to manage the answer
-        //handle_connection(stream)?;
 
         Ok(())
     }
@@ -256,11 +253,7 @@ fn handle_connection(
             let xml = &message.as_str()[crlf..];
 
             let t = std::time::Instant::now();
-            let _result = Notification::try_parse(xml)?;
-            debug!("quick_xml: {} µs", t.elapsed().as_micros());
-
-            let t = std::time::Instant::now();
-            let result = Notification::try_my_parse(xml)?;
+            let result = Notification::try_parse(xml)?;
             debug!("mine: {} µs", t.elapsed().as_micros());
 
             sender.send(result)?;
@@ -281,7 +274,7 @@ fn handle_connection(
 }
 
 #[allow(unused)]
-fn write_to_file(message: &str) -> Result<(), BoxedError> {
+fn write_to_file(message: &str) -> Result<(), std::io::Error> {
     let mut f = File::options().create(true).append(true).open("out.txt")?;
     writeln!(&mut f, "========== New Message ==========")?;
     writeln!(&mut f, "{message}")?;
