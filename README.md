@@ -3,12 +3,12 @@ webhook.toml
 
 ```toml
 [callback]
-port = <PORT>
-host = <CALLBACK_URL>
+port = PORT
+host = CALLBACK_URL
 
 [youtube]
-hub = <HUB_URL>
-topic = <TOPIC_URL>
+hub = HUB_URL
+topic = TOPIC_URL
 ```
 
 > *topic* is the URL without the channel id.
