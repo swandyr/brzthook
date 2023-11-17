@@ -2,6 +2,7 @@ use std::{
     fs::File,
     io::{prelude::*, BufReader},
     net::{TcpListener, TcpStream},
+    sync::mpsc::Sender,
 };
 
 mod config;
@@ -79,16 +80,17 @@ impl HookListener {
     /// }
     ///
     /// ```
-    pub fn listen(&self) -> Result<Option<Notification>, Error> {
+    pub fn listen(&self, sender: Sender<Notification>) -> Result<(), Error> {
         info!("Start listening.");
 
-        let mut nt = None;
         for stream in self.listener.incoming() {
             let stream = stream?;
-            nt = handle_connection(stream)?;
+            if let Some(notification) = handle_connection(stream)? {
+                sender.send(notification).unwrap();
+            }
         }
 
-        Ok(nt)
+        Ok(())
     }
 
     /// Reload the webhook.toml configuration file.
@@ -258,6 +260,7 @@ fn handle_connection(mut stream: TcpStream) -> Result<Option<Notification>, Erro
         }
     };
 
+    debug!("End of handle_connection: {notification:#?}");
     stream.flush()?;
     Ok(notification)
 }
