@@ -2,7 +2,7 @@ use std::{
     fs::File,
     io::{prelude::*, BufReader},
     net::{TcpListener, TcpStream},
-    sync::mpsc::Sender,
+    sync::{mpsc::Sender, Arc},
 };
 
 mod config;
@@ -23,7 +23,7 @@ const CONFIG_PATH: &str = "brzthook.toml";
 
 #[derive(Debug)]
 pub struct HookListener {
-    listener: TcpListener,
+    listener: Arc<TcpListener>,
     config: Config,
 }
 
@@ -49,7 +49,7 @@ impl HookListener {
         let addr = config.server_address();
 
         let listener = Self {
-            listener: TcpListener::bind(&addr)?,
+            listener: Arc::new(TcpListener::bind(&addr)?),
             config,
         };
         info!("TCPListener binded to {}", &addr);
@@ -58,17 +58,31 @@ impl HookListener {
     }
 
     /// Start listening for incoming streams.
-    pub fn listen(&self, sender: &Sender<Notification>) -> Result<(), Error> {
+    pub fn listen(&self, sender: &Sender<Result<Notification, Error>>) {
         info!("Start listening.");
 
-        for stream in self.listener.incoming() {
-            let stream = stream?;
-            if let Some(notification) = handle_connection(stream)? {
-                sender.send(notification).unwrap();
-            }
-        }
+        let listener = Arc::clone(&self.listener);
+        let sender = sender.clone();
 
-        Ok(())
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(stream) => match handle_connection(stream) {
+                        Ok(reponse) => {
+                            if let Some(notification) = reponse {
+                                sender.send(Ok(notification)).unwrap();
+                            }
+                        }
+                        Err(e) => sender.send(Err(e)).unwrap(),
+                    },
+                    Err(e) => sender.send(Err(Error::TcpError(e))).unwrap(),
+                }
+            }
+        });
+    }
+
+    pub fn test_fn(&self) -> String {
+        String::from("Function test OK")
     }
 
     /// Reload the webhook.toml configuration file.
