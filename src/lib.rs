@@ -189,6 +189,7 @@ fn handle_connection(mut stream: TcpStream) -> Result<Option<Notification>, Erro
     debug!("Message:\n{message}");
 
     let request_line = message_lines.first().ok_or(HandleConnectionError::Empty)?;
+    debug!("Received request line: {request_line}");
 
     let notification = match *request_line {
         // The hub send 202 Accepted if the subscription request is accepted
