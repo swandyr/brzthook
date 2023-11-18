@@ -58,29 +58,7 @@ impl HookListener {
     }
 
     /// Start listening for incoming streams.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// // Create the listener
-    /// let (listener, receiver) = HookListener::new()?;
-    ///
-    /// // Start the listener in the background
-    /// std::thead::spawn(|| {
-    ///     if let Err(e) = listener.listen() {
-    ///     println!("error: {e}");
-    ///     }
-    /// });
-    ///
-    /// // Wait for notification
-    /// loop {
-    ///     if let Ok(message) = receiver.try_recv() {
-    ///         println!("New video: {message:?}");
-    ///     }
-    /// }
-    ///
-    /// ```
-    pub fn listen(&self, sender: Sender<Notification>) -> Result<(), Error> {
+    pub fn listen(&self, sender: &Sender<Notification>) -> Result<(), Error> {
         info!("Start listening.");
 
         for stream in self.listener.incoming() {
@@ -233,17 +211,15 @@ fn handle_connection(mut stream: TcpStream) -> Result<Option<Notification>, Erro
             info!("Sending: {response}");
             stream.write_all(response.as_bytes())?;
 
-            write_to_file(&message)?;
-            info!("New message saved in 'out.txt'");
+            //write_to_file(&message)?;
+            //info!("New message saved in 'out.txt'");
 
             let crlf = message
                 .find("\r\n\r\n")
                 .ok_or(HandleConnectionError::NoBodyError)?;
             let xml = &message.as_str()[crlf..];
 
-            let t = std::time::Instant::now();
             let notification = Notification::try_parse(xml)?;
-            debug!("mine: {} µs", t.elapsed().as_micros());
 
             Some(notification)
         }

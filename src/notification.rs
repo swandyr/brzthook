@@ -14,22 +14,22 @@ impl Notification {
         let parsed = super::parse::parse_xml(xml);
 
         let video = Notification {
-            video_id: parsed
+            video_id: (*parsed
                 .get("yt:videoId")
-                .ok_or_else(|| Error::NotificationError("yt:videoId".to_string()))?
-                .to_string(),
-            channel_id: parsed
+                .ok_or_else(|| Error::NotificationError("yt:videoId".to_string()))?)
+            .to_string(),
+            channel_id: (*parsed
                 .get("yt:channelId")
-                .ok_or_else(|| Error::NotificationError("yt:channelId".to_string()))?
-                .to_string(),
-            video_title: parsed
+                .ok_or_else(|| Error::NotificationError("yt:channelId".to_string()))?)
+            .to_string(),
+            video_title: (*parsed
                 .get("title")
-                .ok_or_else(|| Error::NotificationError("title".to_string()))?
-                .to_string(),
-            channel_name: parsed
+                .ok_or_else(|| Error::NotificationError("title".to_string()))?)
+            .to_string(),
+            channel_name: (*parsed
                 .get("name")
-                .ok_or_else(|| Error::NotificationError("name".to_string()))?
-                .to_string(),
+                .ok_or_else(|| Error::NotificationError("name".to_string()))?)
+            .to_string(),
             raw: xml.to_string(),
         };
 
