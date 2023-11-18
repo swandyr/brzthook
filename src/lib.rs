@@ -70,6 +70,7 @@ impl HookListener {
                     Ok(stream) => match handle_connection(stream) {
                         Ok(reponse) => {
                             if let Some(notification) = reponse {
+                                info!("Sending new notification");
                                 sender.send(Ok(notification)).unwrap();
                             }
                         }
