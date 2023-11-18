@@ -17,7 +17,7 @@ use config::Config;
 use prelude::*;
 use tracing::{debug, error, info, warn};
 
-use crate::error::{ConfigurationError, HandleConnectionError, ParseRequestError};
+use crate::error::{HandleConnectionError, ParseRequestError};
 
 const CONFIG_PATH: &str = "brzthook.toml";
 
@@ -82,8 +82,11 @@ impl HookListener {
         });
     }
 
-    pub fn test_fn(&self) -> String {
-        String::from("Function test OK")
+    pub fn addresses(&self, id: &str) -> (String, String, String) {
+        let callback_address = self.config.callback_address();
+        let topic_address = self.config.youtube.topic_address(id);
+        let hub_address = self.config.youtube.hub_address();
+        (callback_address, topic_address, hub_address)
     }
 
     /// Reload the webhook.toml configuration file.
@@ -120,11 +123,7 @@ impl HookListener {
             return Err(Error::SubscriptionModeError(mode.into()));
         }
 
-        let subscription = self
-            .config
-            .youtube
-            .as_ref()
-            .ok_or_else(|| ConfigurationError::PublisherNotFoundError("Youtube".to_string()))?;
+        let subscription = &self.config.youtube;
         let topic_url = subscription.topic_address(id);
         let callback_url = self.config.callback_address();
         let hub = subscription.hub_address();

@@ -4,10 +4,10 @@ use serde::Deserialize;
 
 use crate::error::ConfigurationError;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub(super) struct Config {
     pub(super) server: CfgServer,
-    pub(super) youtube: Option<CfgSubs>,
+    pub(super) youtube: CfgSubs,
 }
 
 impl Config {
@@ -27,14 +27,14 @@ impl Config {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub(super) struct CfgServer {
     pub(super) port: u16,
     pub(super) host: String,
     pub(super) callback: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub(super) struct CfgSubs {
     hub: String,
     topic: String,
