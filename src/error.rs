@@ -2,20 +2,20 @@ use crate::prelude::Notification;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Invalid subscription mode \"{0}\"; valid modes are \"subscribe\" or \"unsubscribe\"")]
-    SubscriptionModeError(String),
+    #[error("Builder error")]
+    Builder(#[from] BuilderError),
     #[error("Configuration error")]
     Configuration(#[from] ConfigurationError),
     #[error("TcpStream error")]
     TcpError(#[from] std::io::Error),
-    #[error("Missing parameter")]
-    NotificationError(String),
     #[error("Request error")]
     RequestLine(#[from] ParseRequestError),
+    #[error("Subscription rejected")]
+    SubscriptionError(String),
     #[error("Error while handling connection")]
     HandleConnection(#[from] HandleConnectionError),
-    #[error("Builder error")]
-    Builder(#[from] BuilderError),
+    #[error("Missing parameter")]
+    NotificationError(String),
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -18,7 +18,7 @@ use prelude::*;
 use tracing::{debug, error, info, warn};
 
 use crate::buidler::HookListenerBuilder;
-use crate::error::{HandleConnectionError, ParseRequestError};
+use crate::error::{HandleConnectionError, ParseRequestError, SubscriptionError};
 
 pub enum Mode {
     Subscribe,
@@ -174,6 +174,14 @@ fn handle_connection(mut stream: TcpStream) -> Result<Option<Notification>, Erro
             None
         }
 
+        response if response.starts_with("HTTP/1.1 4") || response.starts_with("HTTP/1.1 5") => {
+            let crlf = message
+                .find("\r\n\r\n")
+                .ok_or(HandleConnectionError::NoBodyError)?;
+            let reason = &message.as_str()[crlf..];
+            return Err(SubscriptionError(reason.to_string()));
+        }
+
         // The hub senf a GET request for the verification of intent
         // The scubscriber must answer with a 2XX status code and echo the hub.challenge value
         request if request.starts_with("GET") => {
@@ -182,6 +190,11 @@ fn handle_connection(mut stream: TcpStream) -> Result<Option<Notification>, Erro
             let params = request_line.params.ok_or_else(|| {
                 ParseRequestError::ParameterError("No parameters in request".to_string())
             })?;
+
+            if let Some(reason) = params.get("hub.reason") {
+                return Err(SubscriptionError(reason.to_string()));
+            }
+
             let challenge = params
                 .get("hub.challenge")
                 .ok_or_else(|| ParseRequestError::NotFound("hub.challenge".to_string()))?;
