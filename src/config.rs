@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::error::ConfigurationError;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub(super) struct Config {
     pub(super) server: CfgServer,
     pub(super) youtube: CfgSubs,
@@ -34,10 +34,33 @@ pub(super) struct CfgServer {
     pub(super) callback: String,
 }
 
+impl Default for CfgServer {
+    fn default() -> Self {
+        let port = 7878;
+        let host = String::from("127.0.0.1");
+        let callback = format!("http://{host};{port}");
+
+        Self {
+            port,
+            host,
+            callback,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub(super) struct CfgSubs {
     hub: String,
     topic: String,
+}
+
+impl Default for CfgSubs {
+    fn default() -> Self {
+        Self {
+            hub: String::from("https://pubsubhubbub.appspot.com"),
+            topic: String::from("https://www.youtube.com/xml/feeds/videos.xml?channel_id="),
+        }
+    }
 }
 
 impl CfgSubs {

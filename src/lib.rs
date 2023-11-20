@@ -25,11 +25,25 @@ const CONFIG_PATH: &str = "brzthook.toml";
 pub struct HookListener {
     listener: Arc<TcpListener>,
     config: Config,
+    updated: bool,
 }
 
 //TODO: Handle resubscription before the expiration delay (5 days for youtube) (or maybe let caller
 //handle it)
 //TODO: Write function to automatically get hu address
+
+impl Default for HookListener {
+    fn default() -> Self {
+        let config = Config::default();
+        let addr = config.server_address();
+
+        Self {
+            listener: Arc::new(TcpListener::bind(&addr).expect("Cannot bind to localhost:7878")),
+            config,
+            updated: false,
+        }
+    }
+}
 
 impl HookListener {
     /// Create a new listener binded to the server's "{host}:{port}" address  in the webhook.toml
@@ -47,10 +61,12 @@ impl HookListener {
         let config = Config::from_file(CONFIG_PATH)?;
         info!("Config loaded");
         let addr = config.server_address();
+        let updated = false;
 
         let listener = Self {
             listener: Arc::new(TcpListener::bind(&addr)?),
             config,
+            updated,
         };
         info!("TCPListener binded to {}", &addr);
 
