@@ -1,11 +1,4 @@
-use std::{
-    fs::File,
-    io::{prelude::*, BufReader},
-    net::{TcpListener, TcpStream},
-    sync::{mpsc::Sender, Arc},
-};
-
-mod config;
+mod buidler;
 mod error;
 mod notification;
 mod parse;
@@ -13,64 +6,28 @@ pub mod prelude;
 mod request;
 mod response;
 
-use config::Config;
+use std::{
+    fs::File,
+    io::{prelude::*, BufReader},
+    net::{TcpListener, TcpStream},
+    sync::{mpsc::Sender, Arc},
+};
+
 use prelude::*;
 use tracing::{debug, error, info, warn};
 
+use crate::buidler::HookListenerBuilder;
 use crate::error::{HandleConnectionError, ParseRequestError};
-
-const CONFIG_PATH: &str = "brzthook.toml";
 
 #[derive(Debug)]
 pub struct HookListener {
-    listener: Arc<TcpListener>,
-    config: Config,
-    updated: bool,
-}
-
-//TODO: Handle resubscription before the expiration delay (5 days for youtube) (or maybe let caller
-//handle it)
-//TODO: Write function to automatically get hu address
-
-impl Default for HookListener {
-    fn default() -> Self {
-        let config = Config::default();
-        let addr = config.server_address();
-
-        Self {
-            listener: Arc::new(TcpListener::bind(&addr).expect("Cannot bind to localhost:7878")),
-            config,
-            updated: false,
-        }
-    }
+    pub listener: Arc<TcpListener>,
+    pub callback: String,
 }
 
 impl HookListener {
-    /// Create a new listener binded to the server's "{host}:{port}" address  in the webhook.toml
-    /// config file, then instanciate a threadpool of four threads.
-    ///
-    /// This function returns the listener and the channel's receiver where notification will be
-    /// sent.
-    ///
-    /// # Panics:
-    ///
-    /// Configuration file does not exist or is malformed.
-    ///
-    /// TcpListener can not bind to the address.
-    pub fn new() -> Result<Self, Error> {
-        let config = Config::from_file(CONFIG_PATH)?;
-        info!("Config loaded");
-        let addr = config.server_address();
-        let updated = false;
-
-        let listener = Self {
-            listener: Arc::new(TcpListener::bind(&addr)?),
-            config,
-            updated,
-        };
-        info!("TCPListener binded to {}", &addr);
-
-        Ok(listener)
+    pub fn builder() -> HookListenerBuilder {
+        HookListenerBuilder::default()
     }
 
     /// Start listening for incoming streams.
@@ -98,24 +55,12 @@ impl HookListener {
         });
     }
 
-    pub fn addresses(&self, id: &str) -> (String, String, String) {
-        let callback_address = self.config.callback_address();
-        let topic_address = self.config.youtube.topic_address(id);
-        let hub_address = self.config.youtube.hub_address();
-        (callback_address, topic_address, hub_address)
-    }
-
-    /// Reload the webhook.toml configuration file.
-    ///
-    /// # Panics:
-    ///
-    /// Configuration file does not exist or is malformed.
-    pub fn reload_config(&mut self) -> Result<(), Error> {
-        let config = Config::from_file(CONFIG_PATH)?;
-        self.config = config;
-        info!("Config reloaded");
-        Ok(())
-    }
+    //pub fn addresses(&self, id: &str) -> (String, String, String) {
+    //    let callback_address = self.config.callback_address();
+    //    let topic_address = self.config.youtube.topic_address(id);
+    //    let hub_address = self.config.youtube.hub_address();
+    //    (callback_address, topic_address, hub_address)
+    //}
 
     /// Send a subscription/unsubscription request to the hub.
     ///
@@ -139,10 +84,10 @@ impl HookListener {
             return Err(Error::SubscriptionModeError(mode.into()));
         }
 
-        let subscription = &self.config.youtube;
-        let topic_url = subscription.topic_address(id);
-        let callback_url = self.config.callback_address();
-        let hub = subscription.hub_address();
+        //TODO: not hardcode this
+        let topic_url = format!("https://www.youtube.com/xml/feeds/video.xml?channel_id={id}");
+        let hub = "https://pubsubhubbub.appspot.com";
+        let callback_url = &self.callback;
 
         info!(
             r#"

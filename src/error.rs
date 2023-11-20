@@ -14,6 +14,18 @@ pub enum Error {
     RequestLine(#[from] ParseRequestError),
     #[error("Error while handling connection")]
     HandleConnection(#[from] HandleConnectionError),
+    #[error("Builder error")]
+    Builder(#[from] BuilderError),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum BuilderError {
+    #[error("TCPListener cannot bind to address")]
+    CannotBind(#[from] std::io::Error),
+    #[error("Missing TCP Listener")]
+    MissingListener,
+    #[error("Missing callback URL")]
+    MissingCallback,
 }
 
 #[derive(Debug, thiserror::Error)]
