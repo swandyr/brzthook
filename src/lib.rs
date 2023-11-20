@@ -228,6 +228,7 @@ fn handle_connection(mut stream: TcpStream, new_only: bool) -> Result<Option<Not
             let notification = Notification::try_parse(xml)?;
 
             if new_only && !notification.is_new() {
+                info!("It's an updated video, pass");
                 None
             } else {
                 Some(notification)
