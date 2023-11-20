@@ -7,6 +7,7 @@ mod request;
 mod response;
 
 use std::{
+    fmt,
     fs::File,
     io::{prelude::*, BufReader},
     net::{TcpListener, TcpStream},
@@ -18,6 +19,24 @@ use tracing::{debug, error, info, warn};
 
 use crate::buidler::HookListenerBuilder;
 use crate::error::{HandleConnectionError, ParseRequestError};
+
+pub enum Mode {
+    Subscribe,
+    Unsubscribe,
+}
+
+impl fmt::Display for Mode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Subscribe => "subscribe",
+                Self::Unsubscribe => "unsubscribe",
+            }
+        )
+    }
+}
 
 #[derive(Debug)]
 pub struct HookListener {
@@ -74,15 +93,10 @@ impl HookListener {
     /// Publisher configuration is not found.
     ///
     /// Request can not be streamed to the hub address.
-    pub fn subscribe(&self, id: impl AsRef<str>, mode: impl AsRef<str>) -> Result<(), Error> {
+    pub fn subscribe(&self, id: impl AsRef<str>, mode: Mode) -> Result<(), Error> {
         let id = id.as_ref();
-        let mode = mode.as_ref();
 
         info!("Initiating {mode} request with id: {id}");
-
-        if !(mode == "subscribe" || mode == "unsubscribe") {
-            return Err(Error::SubscriptionModeError(mode.into()));
-        }
 
         //TODO: not hardcode this
         let topic_url = format!("https://www.youtube.com/xml/feeds/video.xml?channel_id={id}");
