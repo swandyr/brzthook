@@ -18,7 +18,7 @@ use prelude::*;
 use tracing::{debug, error, info, warn};
 
 use crate::buidler::HookListenerBuilder;
-use crate::error::{HandleConnectionError, ParseRequestError, SubscriptionError};
+use crate::error::{Error::SubscriptionError, HandleConnectionError, ParseRequestError};
 
 pub enum Mode {
     Subscribe,
