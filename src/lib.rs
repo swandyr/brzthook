@@ -99,7 +99,7 @@ impl HookListener {
         info!("Initiating {mode} request with id: {id}");
 
         //TODO: not hardcode this
-        let topic_url = format!("https://www.youtube.com/xml/feeds/video.xml?channel_id={id}");
+        let topic_url = format!("https://www.youtube.com/xml/feeds/videos.xml?channel_id={id}");
         let hub = "https://pubsubhubbub.appspot.com";
         let callback_url = &self.callback;
 
