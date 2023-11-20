@@ -2,8 +2,15 @@ use std::collections::HashMap;
 
 pub(super) fn parse_xml(xml: &str) -> HashMap<&str, &str> {
     let mut v = HashMap::new();
-    let tags = &["<yt:videoId>", "<yt:channelId>", "<title>", "<name>"];
-    let mut lines = xml.lines().map(|l| l.trim());
+    let tags = &[
+        "<yt:videoId>",
+        "<yt:channelId>",
+        "<title>",
+        "<name>",
+        "<published>",
+        "<updated>",
+    ];
+    let mut lines = xml.lines().map(str::trim);
 
     for &t in tags {
         let l = lines.find(|l| l.starts_with(t));

@@ -195,14 +195,14 @@ fn handle_connection(mut stream: TcpStream, new_only: bool) -> Result<Option<Not
             })?;
 
             if let Some(reason) = params.get("hub.reason") {
-                return Err(SubscriptionError(reason.to_string()));
+                return Err(SubscriptionError((*reason).to_string()));
             }
 
             let challenge = params
                 .get("hub.challenge")
                 .ok_or_else(|| ParseRequestError::NotFound("hub.challenge".to_string()))?;
 
-            let response = format!("HTTP/1.1 200 OK\r\n\r\n{}", challenge);
+            let response = format!("HTTP/1.1 200 OK\r\n\r\n{challenge}");
             info!("Sending: {response:?}");
             stream.write_all(response.as_bytes())?;
 
