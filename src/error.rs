@@ -4,8 +4,6 @@ use crate::prelude::Notification;
 pub enum Error {
     #[error("Builder error")]
     Builder(#[from] BuilderError),
-    #[error("Configuration error")]
-    Configuration(#[from] ConfigurationError),
     #[error("TcpStream error")]
     TcpError(#[from] std::io::Error),
     #[error("Request error")]
@@ -26,16 +24,6 @@ pub enum BuilderError {
     MissingListener,
     #[error("Missing callback URL")]
     MissingCallback,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum ConfigurationError {
-    #[error("Configuration file not found")]
-    MissingFile(#[from] std::io::Error),
-    #[error("Configuration file can't be read")]
-    ParseError(#[from] toml::de::Error),
-    #[error("Publisher {0} not found")]
-    PublisherNotFoundError(String),
 }
 
 #[derive(Debug, thiserror::Error)]
