@@ -7,6 +7,7 @@ use std::{fmt::Display, io, net::TcpListener, sync::Arc};
 pub struct HookListenerBuilder {
     listener: Option<TcpListener>,
     callback: Option<String>,
+    new_only: bool,
 }
 
 impl HookListenerBuilder {
@@ -21,10 +22,16 @@ impl HookListenerBuilder {
         self
     }
 
+    pub fn new_only(mut self, new_only: bool) -> Self {
+        self.new_only = new_only;
+        self
+    }
+
     pub fn build(self) -> Result<HookListener, BuilderError> {
         Ok(HookListener {
             listener: Arc::new(self.listener.ok_or_else(|| BuilderError::MissingListener)?),
             callback: self.callback.ok_or_else(|| BuilderError::MissingCallback)?,
+            new_only: self.new_only,
         })
     }
 }

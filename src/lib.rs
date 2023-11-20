@@ -20,6 +20,7 @@ use tracing::{debug, error, info, warn};
 use crate::buidler::HookListenerBuilder;
 use crate::error::{Error::SubscriptionError, HandleConnectionError, ParseRequestError};
 
+#[derive(Debug, Clone, Copy)]
 pub enum Mode {
     Subscribe,
     Unsubscribe,
@@ -42,6 +43,7 @@ impl fmt::Display for Mode {
 pub struct HookListener {
     pub listener: Arc<TcpListener>,
     pub callback: String,
+    pub new_only: bool,
 }
 
 impl HookListener {
@@ -55,11 +57,12 @@ impl HookListener {
 
         let listener = Arc::clone(&self.listener);
         let sender = sender.clone();
+        let new_only = self.new_only;
 
         std::thread::spawn(move || {
             for stream in listener.incoming() {
                 match stream {
-                    Ok(stream) => match handle_connection(stream) {
+                    Ok(stream) => match handle_connection(stream, new_only) {
                         Ok(reponse) => {
                             if let Some(notification) = reponse {
                                 info!("Sending new notification");
@@ -134,7 +137,7 @@ hub.topic={}"#,
 
 const BUF_SIZE: usize = 1024;
 
-fn handle_connection(mut stream: TcpStream) -> Result<Option<Notification>, Error> {
+fn handle_connection(mut stream: TcpStream, new_only: bool) -> Result<Option<Notification>, Error> {
     let mut buf_reader = BufReader::new(&mut stream);
 
     let mut n_bytes = 0;
@@ -224,7 +227,11 @@ fn handle_connection(mut stream: TcpStream) -> Result<Option<Notification>, Erro
 
             let notification = Notification::try_parse(xml)?;
 
-            Some(notification)
+            if new_only && !notification.is_new() {
+                None
+            } else {
+                Some(notification)
+            }
         }
 
         // Unhandled

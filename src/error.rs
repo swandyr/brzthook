@@ -12,8 +12,8 @@ pub enum Error {
     SubscriptionError(String),
     #[error("Error while handling connection")]
     HandleConnection(#[from] HandleConnectionError),
-    #[error("Missing parameter")]
-    NotificationError(String),
+    #[error("Notfication error")]
+    Notification(#[from] NotificationError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -48,4 +48,12 @@ pub enum HandleConnectionError {
     NoBodyError,
     #[error("Send error")]
     SendError(#[from] Box<std::sync::mpsc::SendError<Notification>>),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum NotificationError {
+    #[error("Missing parameter {0}")]
+    MissingParameter(String),
+    #[error("OffsetDateTime parse error")]
+    DateTimeError(#[from] time::error::Parse),
 }
