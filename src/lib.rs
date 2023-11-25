@@ -15,6 +15,8 @@ use std::{
 };
 
 use prelude::*;
+use request::Request;
+use response::Response;
 use tracing::{debug, error, info, warn};
 
 use crate::buidler::HookListenerBuilder;
@@ -220,12 +222,21 @@ fn handle_connection(mut stream: TcpStream, new_only: bool) -> Result<Option<Not
             //write_to_file(&message)?;
             //info!("New message saved in 'out.txt'");
 
-            let crlf = message
-                .find("\r\n\r\n")
-                .ok_or(HandleConnectionError::NoBodyError)?;
-            let xml = &message.as_str()[crlf..];
+            let request = request::parse_request(&message)?;
+            let from = request
+                .headers
+                .get("From")
+                .ok_or_else(|| ParseRequestError::NotFound("From header".to_string()))?;
+            if *from != "googlebot(at)googlebot.com" {
+                error!("unknown source: {from}");
+                return Err(HandleConnectionError::Empty.into());
+            }
 
-            let notification = Notification::try_parse(xml)?;
+            let notification = Notification::try_parse(
+                request
+                    .body
+                    .ok_or_else(|| HandleConnectionError::NoBodyError)?,
+            )?;
 
             if new_only && !notification.is_new() {
                 info!("It's an updated video, pass");
@@ -250,6 +261,14 @@ fn handle_connection(mut stream: TcpStream, new_only: bool) -> Result<Option<Not
     debug!("End of handle_connection: {notification:#?}");
     stream.flush()?;
     Ok(notification)
+}
+
+fn handle_request(request: Request, stream: TcpStream) {
+    todo!()
+}
+
+fn handle_response(response: Response) {
+    todo!()
 }
 
 #[allow(unused)]
