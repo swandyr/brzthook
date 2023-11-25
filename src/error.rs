@@ -7,7 +7,7 @@ pub enum Error {
     #[error("TcpStream error")]
     TcpError(#[from] std::io::Error),
     #[error("Request error")]
-    RequestLine(#[from] ParseRequestError),
+    Parse(#[from] ParseError),
     #[error("Subscription rejected")]
     SubscriptionError(String),
     #[error("Error while handling connection")]
@@ -27,15 +27,15 @@ pub enum BuilderError {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum ParseRequestError {
+pub enum ParseError {
     #[error("{0} not found in request")]
     NotFound(String),
+    #[error("Error in header {0}")]
+    HeaderError(String),
     #[error("{0}")]
     ParameterError(String),
     #[error("Requested resource does not exists")]
     UriError,
-    #[error("No request line")]
-    RequestLineError,
 }
 
 #[derive(Debug, thiserror::Error)]

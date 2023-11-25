@@ -1,5 +1,6 @@
 mod buidler;
 mod error;
+mod message;
 mod notification;
 mod parse;
 pub mod prelude;
@@ -14,13 +15,14 @@ use std::{
     sync::{mpsc::Sender, Arc},
 };
 
+use message::Message;
 use prelude::*;
 use request::Request;
 use response::Response;
 use tracing::{debug, error, info, warn};
 
 use crate::buidler::HookListenerBuilder;
-use crate::error::{Error::SubscriptionError, HandleConnectionError, ParseRequestError};
+use crate::error::{Error::SubscriptionError, HandleConnectionError, ParseError};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Mode {
@@ -78,13 +80,6 @@ impl HookListener {
             }
         });
     }
-
-    //pub fn addresses(&self, id: &str) -> (String, String, String) {
-    //    let callback_address = self.config.callback_address();
-    //    let topic_address = self.config.youtube.topic_address(id);
-    //    let hub_address = self.config.youtube.hub_address();
-    //    (callback_address, topic_address, hub_address)
-    //}
 
     /// Send a subscription/unsubscription request to the hub.
     ///
@@ -156,6 +151,7 @@ fn handle_connection(mut stream: TcpStream, new_only: bool) -> Result<Option<Not
             }
             Err(e) => {
                 error!("Error reading buffer: {e}");
+                stream.flush()?;
                 return Err(Error::TcpError(e));
             }
         }
@@ -164,37 +160,48 @@ fn handle_connection(mut stream: TcpStream, new_only: bool) -> Result<Option<Not
 
     received.retain(|&b| b != 0);
     let message = String::from_utf8(received).map_err(HandleConnectionError::FormatUtf8Error)?;
-    let message_lines: Vec<&str> = message.trim().lines().collect();
+    let message = Message::from_str(&message)?;
 
-    debug!("Message:\n{message}");
+    debug!("Message:\n{message:#?}");
 
-    let request_line = message_lines.first().ok_or(HandleConnectionError::Empty)?;
-    debug!("Received request line: {request_line}");
-
-    let notification = match *request_line {
-        // The hub send 202 Accepted if the subscription request is accepted
-        "HTTP/1.1 202 ACCEPTED" => {
-            info!("Subscription accepted");
-
+    let notification = match message {
+        Message::Request(request) => handle_request(request, stream, new_only)?,
+        Message::Response(response) => {
+            handle_response(response)?;
             None
         }
+    };
 
-        response if response.starts_with("HTTP/1.1 4") || response.starts_with("HTTP/1.1 5") => {
-            let crlf = message
-                .find("\r\n\r\n")
-                .ok_or(HandleConnectionError::NoBodyError)?;
-            let reason = &message.as_str()[crlf..];
-            return Err(SubscriptionError(reason.to_string()));
-        }
+    debug!("End of handle_connection: {notification:#?}");
+    Ok(notification)
+}
 
-        // The hub senf a GET request for the verification of intent
+fn handle_request(
+    request: Request,
+    mut stream: TcpStream,
+    new_only: bool,
+) -> Result<Option<Notification>, Error> {
+    let from = request
+        .headers
+        .get("From")
+        .ok_or_else(|| ParseError::NotFound("From header".to_string()))?;
+    if *from != "googlebot(at)googlebot.com" {
+        error!("unknown source : {from}");
+        return Err(HandleConnectionError::Empty.into());
+    }
+
+    let method = request.request_line.method;
+    let _path = request.request_line.path;
+
+    let notification = match method {
+        // The hub send a GET request for the verification of intent
         // The scubscriber must answer with a 2XX status code and echo the hub.challenge value
-        request if request.starts_with("GET") => {
+        "GET" => {
             info!("Received GET request");
-            let request_line = request::parse_request_line(request)?;
-            let params = request_line.params.ok_or_else(|| {
-                ParseRequestError::ParameterError("No parameters in request".to_string())
-            })?;
+            let params = request
+                .request_line
+                .params
+                .ok_or_else(|| ParseError::ParameterError("No paramater in request".to_string()))?;
 
             if let Some(reason) = params.get("hub.reason") {
                 return Err(SubscriptionError((*reason).to_string()));
@@ -202,8 +209,7 @@ fn handle_connection(mut stream: TcpStream, new_only: bool) -> Result<Option<Not
 
             let challenge = params
                 .get("hub.challenge")
-                .ok_or_else(|| ParseRequestError::NotFound("hub.challenge".to_string()))?;
-
+                .ok_or_else(|| ParseError::NotFound("hub.challenge".to_string()))?;
             let response = format!("HTTP/1.1 200 OK\r\n\r\n{challenge}");
             info!("Sending: {response:?}");
             stream.write_all(response.as_bytes())?;
@@ -212,25 +218,12 @@ fn handle_connection(mut stream: TcpStream, new_only: bool) -> Result<Option<Not
         }
 
         // Request when a new resource is published
-        "POST / HTTP/1.1" => {
+        "POST" => {
             info!("Received POST request");
 
             let response = "HTTP/1.1 200 OK\r\n\r\n";
             info!("Sending: {response}");
             stream.write_all(response.as_bytes())?;
-
-            //write_to_file(&message)?;
-            //info!("New message saved in 'out.txt'");
-
-            let request = request::parse_request(&message)?;
-            let from = request
-                .headers
-                .get("From")
-                .ok_or_else(|| ParseRequestError::NotFound("From header".to_string()))?;
-            if *from != "googlebot(at)googlebot.com" {
-                error!("unknown source: {from}");
-                return Err(HandleConnectionError::Empty.into());
-            }
 
             let notification = Notification::try_parse(
                 request
@@ -239,36 +232,52 @@ fn handle_connection(mut stream: TcpStream, new_only: bool) -> Result<Option<Not
             )?;
 
             if new_only && !notification.is_new() {
-                info!("It's an updated video, pass");
+                info!("It's an updated video; pass");
                 None
             } else {
                 Some(notification)
             }
         }
-
-        // Unhandled
         _ => {
-            warn!("Unhandled request:");
-            dbg!(&message_lines);
-            for line in &message_lines {
-                warn!("{line}");
-            }
+            warn!("Unhandled request: {request:#?}");
 
             None
         }
     };
 
-    debug!("End of handle_connection: {notification:#?}");
     stream.flush()?;
+
     Ok(notification)
 }
 
-fn handle_request(request: Request, stream: TcpStream) {
-    todo!()
-}
+fn handle_response(response: Response) -> Result<(), Error> {
+    let from = response
+        .headers
+        .get("From")
+        .ok_or_else(|| ParseError::NotFound("From header".to_string()))?;
+    if *from != "googlebot(at)googlebot.com" {
+        error!("unknown source : {from}");
+        return Err(HandleConnectionError::Empty.into());
+    }
+    let status_code = response.status_line.status_code;
+    let _status_message = response.status_line.status_message;
 
-fn handle_response(response: Response) {
-    todo!()
+    match status_code {
+        "202" => {
+            info!("Request accepted")
+        }
+        code if code.starts_with('4') || code.starts_with('5') => {
+            let reason = response
+                .body
+                .ok_or_else(|| HandleConnectionError::NoBodyError)?;
+            return Err(SubscriptionError(reason.to_string()));
+        }
+        _ => {
+            warn!("Unhandled response: {response:#?}");
+        }
+    }
+
+    Ok(())
 }
 
 #[allow(unused)]
