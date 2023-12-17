@@ -13,6 +13,7 @@ use std::{
     io::{prelude::*, BufReader},
     net::{TcpListener, TcpStream},
     sync::{mpsc::Sender, Arc},
+    time::Duration,
 };
 
 use message::Message;
@@ -135,6 +136,7 @@ hub.topic={}"#,
 const BUF_SIZE: usize = 1024;
 
 fn handle_connection(mut stream: TcpStream, new_only: bool) -> Result<Option<Notification>, Error> {
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
     let mut buf_reader = BufReader::new(&mut stream);
 
     let mut n_bytes = 0;
